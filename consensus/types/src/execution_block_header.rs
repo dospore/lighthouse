@@ -103,8 +103,8 @@ pub struct EncodableExecutionBlockHeader<'a> {
     pub logs_bloom: &'a [u8],
     pub difficulty: u64,
     pub number: u64,
-    pub gas_limit: u64,
-    pub gas_used: u64,
+    pub gas_limit: u128,
+    pub gas_used: u128,
     pub timestamp: u64,
     pub extra_data: &'a [u8],
     pub mix_hash: &'a [u8],
@@ -128,8 +128,8 @@ impl<'a> From<&'a ExecutionBlockHeader> for EncodableExecutionBlockHeader<'a> {
             logs_bloom: header.logs_bloom.as_slice(),
             difficulty: header.difficulty.as_u64(), // TODO this might panic
             number: header.number.as_u64(),         // TODO this might panic
-            gas_limit: header.gas_limit.as_u64(),   // TODO this might panic
-            gas_used: header.gas_used.as_u64(),     // TODO this might panic
+            gas_limit: header.gas_limit.as_u128(),   // TODO this might panic
+            gas_used: header.gas_used.as_u128(),     // TODO this might panic
             timestamp: header.timestamp,
             extra_data: header.extra_data.as_slice(),
             mix_hash: header.mix_hash.as_bytes(),

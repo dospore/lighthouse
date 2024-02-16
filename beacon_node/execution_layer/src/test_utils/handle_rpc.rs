@@ -6,6 +6,7 @@ use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use types::{EthSpec, ForkName};
+use alloy_rlp::Encodable;
 
 pub const GENERIC_ERROR_CODE: i64 = -1234;
 pub const BAD_PARAMS_ERROR_CODE: i64 = -32602;
@@ -482,7 +483,11 @@ pub async fn handle_rpc<T: EthSpec>(
                             block
                                 .transactions()
                                 .iter()
-                                .map(|transaction| VariableList::new(transaction.rlp().to_vec()))
+                                .map(|transaction| {
+                                    let mut out: Vec<u8> = vec!();
+                                    transaction.encode(&mut out);
+                                    VariableList::new(out)
+                                })
                                 .collect::<Result<_, _>>()
                                 .map_err(|e| {
                                     (

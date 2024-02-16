@@ -5,6 +5,8 @@
 //! deposit-contract functionality that the `beacon_node/eth1` crate already provides.
 
 use crate::payload_cache::PayloadCache;
+use alloy_consensus::TxEnvelope;
+use alloy_rlp::Encodable;
 use arc_swap::ArcSwapOption;
 use auth::{strip_prefix, Auth, JwtKey};
 use builder_client::BuilderHttpClient;
@@ -16,7 +18,6 @@ use engines::{Engine, EngineError};
 pub use engines::{EngineState, ForkchoiceState};
 use eth2::types::FullPayloadContents;
 use eth2::types::{builder_bid::SignedBuilderBid, BlobsBundle, ForkVersionedResponse};
-use ethers_core::types::Transaction as EthersTransaction;
 use fork_choice::ForkchoiceUpdateParameters;
 use lru::LruCache;
 use payload_status::process_payload_status;
@@ -1852,11 +1853,15 @@ impl<T: EthSpec> ExecutionLayer<T> {
             return Ok(None);
         };
 
-        let convert_transactions = |transactions: Vec<EthersTransaction>| {
+        let convert_transactions = |transactions: Vec<TxEnvelope>| {
             VariableList::new(
                 transactions
                     .into_iter()
-                    .map(|tx| VariableList::new(tx.rlp().to_vec()))
+                    .map(|tx| {
+                        let mut out: Vec<u8> = vec!();
+                        tx.encode(&mut out);
+                        VariableList::new(out)
+                    })
                     .collect::<Result<Vec<_>, ssz_types::Error>>()?,
             )
             .map_err(ApiError::SszError)

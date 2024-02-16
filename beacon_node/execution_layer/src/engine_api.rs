@@ -9,9 +9,8 @@ use eth2::types::{
     BlobsBundle, SsePayloadAttributes, SsePayloadAttributesV1, SsePayloadAttributesV2,
     SsePayloadAttributesV3,
 };
-use ethers_core::types::Transaction;
-use ethers_core::utils::rlp;
-use ethers_core::utils::rlp::{Decodable, Rlp};
+use alloy_rlp::{Decodable, Error as AlloyDecodeError};
+use alloy_consensus::TxEnvelope;
 use http::deposit_methods::RpcError;
 pub use json_structures::{JsonWithdrawal, TransitionConfigurationV1};
 use pretty_reqwest_error::PrettyReqwestError;
@@ -23,7 +22,7 @@ use superstruct::superstruct;
 pub use types::{
     Address, BeaconBlockRef, EthSpec, ExecutionBlockHash, ExecutionPayload, ExecutionPayloadHeader,
     ExecutionPayloadRef, FixedVector, ForkName, Hash256, Transactions, Uint256, VariableList,
-    Withdrawal, Withdrawals,
+    Withdrawal, Withdrawals, Unsigned
 };
 use types::{ExecutionPayloadCapella, ExecutionPayloadDeneb, ExecutionPayloadMerge, KzgProofs};
 
@@ -64,7 +63,7 @@ pub enum Error {
     IncorrectStateVariant,
     RequiredMethodUnsupported(&'static str),
     UnsupportedForkVariant(String),
-    RlpDecoderError(rlp::DecoderError),
+    RlpDecoderError(AlloyDecodeError),
 }
 
 impl From<reqwest::Error> for Error {
@@ -98,8 +97,8 @@ impl From<builder_client::Error> for Error {
     }
 }
 
-impl From<rlp::DecoderError> for Error {
-    fn from(e: rlp::DecoderError) -> Self {
+impl From<AlloyDecodeError> for Error {
+    fn from(e: AlloyDecodeError) -> Self {
         Error::RlpDecoderError(e)
     }
 }
@@ -184,7 +183,9 @@ pub struct ExecutionBlockWithTransactions<T: EthSpec> {
     pub base_fee_per_gas: Uint256,
     #[serde(rename = "hash")]
     pub block_hash: ExecutionBlockHash,
-    pub transactions: Vec<Transaction>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub transactions: Vec<TxEnvelope>, // TODO this just skips since TxEnvelope is not serializable
+                                       // but need help with this
     #[superstruct(only(Capella, Deneb))]
     pub withdrawals: Vec<JsonWithdrawal>,
     #[superstruct(only(Deneb))]
@@ -217,7 +218,7 @@ impl<T: EthSpec> TryFrom<ExecutionPayload<T>> for ExecutionBlockWithTransactions
                 transactions: block
                     .transactions
                     .iter()
-                    .map(|tx| Transaction::decode(&Rlp::new(tx)))
+                    .map(|tx| beacon_tx_to_tx_envelope(tx))
                     .collect::<Result<Vec<_>, _>>()?,
             }),
             ExecutionPayload::Capella(block) => {
@@ -238,7 +239,7 @@ impl<T: EthSpec> TryFrom<ExecutionPayload<T>> for ExecutionBlockWithTransactions
                     transactions: block
                         .transactions
                         .iter()
-                        .map(|tx| Transaction::decode(&Rlp::new(tx)))
+                        .map(|tx| beacon_tx_to_tx_envelope(tx))
                         .collect::<Result<Vec<_>, _>>()?,
                     withdrawals: Vec::from(block.withdrawals)
                         .into_iter()
@@ -263,7 +264,7 @@ impl<T: EthSpec> TryFrom<ExecutionPayload<T>> for ExecutionBlockWithTransactions
                 transactions: block
                     .transactions
                     .iter()
-                    .map(|tx| Transaction::decode(&Rlp::new(tx)))
+                    .map(|tx| beacon_tx_to_tx_envelope(tx))
                     .collect::<Result<Vec<_>, _>>()?,
                 withdrawals: Vec::from(block.withdrawals)
                     .into_iter()
@@ -483,6 +484,14 @@ pub struct ExecutionPayloadBodyV1<E: EthSpec> {
     pub transactions: Transactions<E>,
     pub withdrawals: Option<Withdrawals<E>>,
 }
+
+pub fn beacon_tx_to_tx_envelope<N: Unsigned>(
+    tx: &types::Transaction<N>,
+) -> Result<TxEnvelope, AlloyDecodeError> {
+    let tx_bytes = Vec::from(tx.clone());
+    TxEnvelope::decode(&mut tx_bytes.as_slice())
+}
+
 
 impl<E: EthSpec> ExecutionPayloadBodyV1<E> {
     pub fn to_payload(
